@@ -59,7 +59,7 @@ Artifact `fogos-axion-sukisu-susfs` berisi:
 | `System.map` | Symbol map untuk verifikasi |
 | `Module.symvers` | CRC simbol hasil build |
 
-`scripts/package.sh` menghasilkan `boot.img` dan `boot-gms.img` dari stock boot Axion yang sesuai, lalu memverifikasi kernel dan ramdisk hasil repack.
+`scripts/package.sh` menghasilkan `boot.img` dan `boot-gms.img` bila stock boot Axion yang sesuai tersedia; jika tidak, build tetap menghasilkan kernel, config, dan zip AK3. Stock boot tidak lagi dihosting di release terpisah.
 
 ## Flash
 
@@ -138,15 +138,8 @@ daftar modul.
 
 ### Kembali ke stock Axion 2.9
 
-Stock boot Axion 2.9 tersedia di release
-[`stock-axion-2.9-20261028`](https://github.com/temporalsgt/fogos-axion-sukisu-susfs/releases/tag/stock-axion-2.9-20261028).
-
-| ROM | File stock |
-| --- | --- |
-| AxionOS **VANILLA** | `boot.img` |
-| AxionOS **GMS/GApps** | `boot-gms-stock.img` |
-
-VANILLA:
+Stock boot tidak lagi dihosting di release terpisah. Ekstrak `boot.img` dari
+zip ROM Axion yang sesuai, lalu flash:
 
 ```bash
 adb reboot bootloader
@@ -154,13 +147,8 @@ fastboot flash boot_a boot.img
 fastboot reboot
 ```
 
-GMS/GApps:
-
-```bash
-adb reboot bootloader
-fastboot flash boot_a boot-gms-stock.img
-fastboot reboot
-```
+Untuk GMS/GApps, ekstrak `boot.img` dari zip
+`axion-2.9-NOESIS-20261028-OFFICIAL-GMS-fogos.zip`.
 
 ### Kembali ke kernel custom sebelumnya
 
