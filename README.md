@@ -2,8 +2,10 @@
 
 Kernel untuk **Motorola Moto G45 5G (`fogos`, SM6375/Holi, Linux 5.4.302)** yang dijalankan di **AxionOS 2.9** resmi, dengan **SukiSU Ultra** mode `builtin` dan **SUSFS v2.4.0**.
 
+Build ini mendukung dua varian ROM: **VANILLA** dan **GMS/GApps**. Kernel dan modul vendornya sama; yang berbeda hanya ramdisk boot, sehingga tersedia dua image fastboot.
+
 - Repo: <https://github.com/temporalsgt/fogos-axion-sukisu-susfs>
-- ROM acuan: `axion-2.9-NOESIS-20261028-OFFICIAL-VANILLA-fogos`
+- ROM acuan: `axion-2.9-NOESIS-20261028-OFFICIAL-VANILLA-fogos` dan `axion-2.9-NOESIS-20261028-OFFICIAL-GMS-fogos`
 - Kernel release acuan: `5.4.302-moto-g92683a4fde22`
 - Build: GitHub Actions (`ubuntu-24.04`)
 - **Release terbaru:** [`fogos-axion-sukisu-susfs-20261114`](https://github.com/temporalsgt/fogos-axion-sukisu-susfs/releases/tag/fogos-axion-sukisu-susfs-20261114)
@@ -12,14 +14,17 @@ Kernel untuk **Motorola Moto G45 5G (`fogos`, SM6375/Holi, Linux 5.4.302)** yang
 
 Paket siap flash tersedia di GitHub Release:
 
-| Asset | Ukuran |
-| --- | ---: |
-| `boot.img` | 57.987.072 |
-| `fogos-axion-sukisu-susfs-20261114.zip` | 21.658.322 |
-| `Image` | 39.463.424 |
-| `kernel.config` | 184.880 |
-| `System.map` | 10.832.918 |
-| `Module.symvers` | 762.744 |
+| Asset | Varian | Ukuran |
+| --- | --- | ---: |
+| `boot.img` | VANILLA | 57.987.072 |
+| `boot-gms.img` | GMS/GApps | 57.987.072 |
+| `fogos-axion-sukisu-susfs-20261114.zip` | VANILLA + GMS/GApps | 21.658.322 |
+| `Image` | Semua varian | 39.463.424 |
+| `kernel.config` | Semua varian | 184.880 |
+| `System.map` | Semua varian | 10.832.918 |
+| `Module.symvers` | Semua varian | 762.744 |
+
+`boot.img` dan `boot-gms.img` memakai kernel yang sama. Jangan saling tukar, karena ramdisk di dalamnya berbeda. Zip AnyKernel3 bisa dipakai di kedua varian karena mempertahankan ramdisk ROM yang sedang terpasang.
 
 Artifact `fogos-axion-sukisu-susfs` di GitHub Actions tetap tersedia sebagai hasil build mentah. Artifact memerlukan login GitHub dan bisa kedaluwarsa; release lebih stabil untuk distribusi.
 
@@ -46,19 +51,29 @@ Artifact `fogos-axion-sukisu-susfs` berisi:
 
 | File | Fungsi |
 | --- | --- |
-| `boot.img` | Flash fastboot, sudah berisi kernel baru + ramdisk Axion |
-| `fogos-axion-sukisu-susfs-YYYYMMDD.zip` | Zip AnyKernel3 untuk recovery |
+| `boot.img` | Fastboot VANILLA, kernel baru + ramdisk VANILLA |
+| `boot-gms.img` | Fastboot GMS/GApps, kernel baru + ramdisk GMS |
+| `fogos-axion-sukisu-susfs-YYYYMMDD.zip` | Zip AnyKernel3 untuk recovery, bisa dipakai di kedua varian |
 | `Image` | Kernel mentah |
 | `kernel.config` | Config hasil build |
 | `System.map` | Symbol map untuk verifikasi |
 | `Module.symvers` | CRC simbol hasil build |
 
+`scripts/package.sh` menghasilkan `boot.img` dan `boot-gms.img` dari stock boot Axion yang sesuai, lalu memverifikasi kernel dan ramdisk hasil repack.
+
 ## Flash
 
 Bootloader HP sudah **unlocked** (`securestate: flashing_unlocked`), jadi
-kedua cara bisa dipakai.
+kedua cara bisa dipakai. Pilih image sesuai ROM yang sedang terpasang:
+
+| ROM | File |
+| --- | --- |
+| AxionOS **VANILLA** | `boot.img` |
+| AxionOS **GMS/GApps** | `boot-gms.img` |
 
 ### Fastboot (disarankan)
+
+VANILLA:
 
 ```bash
 adb reboot bootloader
@@ -66,12 +81,23 @@ fastboot flash boot_a boot.img
 fastboot reboot
 ```
 
-Perintah di atas hanya menulis ke **`boot_a`**. Slot `boot_b` dibiarkan stock
-Axion sebagai fallback. Hindari `fastboot flash boot` tanpa suffix kalau ingin
+GMS/GApps:
+
+```bash
+adb reboot bootloader
+fastboot flash boot_a boot-gms.img
+fastboot reboot
+```
+
+Keduanya hanya menulis ke **`boot_a`**. Slot `boot_b` dibiarkan stock Axion
+sebagai fallback. Hindari `fastboot flash boot` tanpa suffix kalau ingin
 memastikan slot B tidak tersentuh.
 
-`boot.img` di release adalah **boot Axion 2.9 yang di-repack**, bukan boot
-stock. Jangan flash `vendor_boot` atau `dtbo` — build ini tidak mengubahnya.
+`boot.img` dan `boot-gms.img` adalah **boot Axion 2.9 yang di-repack**, bukan
+boot stock. Kernel-nya sama, tetapi ramdisk-nya berbeda: `boot.img` memakai
+ramdisk VANILLA, `boot-gms.img` memakai ramdisk GMS. Jangan flash `boot.img`
+VANILLA ke GMS/GApps, atau sebaliknya. Jangan flash `vendor_boot` atau `dtbo` —
+build ini tidak mengubahnya.
 
 ### Recovery (AnyKernel3)
 
@@ -80,13 +106,18 @@ stock. Jangan flash `vendor_boot` atau `dtbo` — build ini tidak mengubahnya.
 3. Install zip, lalu reboot.
 
 Zip AK3 hanya mengganti kernel di boot yang sedang terpasang; ramdisk,
-dtb, dan konfigurasi verity/AVB Axion tetap dipertahankan.
+dtb, dan konfigurasi verity/AVB Axion tetap dipertahankan. Satu zip ini bisa
+dipakai untuk VANILLA maupun GMS/GApps.
 
 ## Verifikasi setelah boot
 
 ```bash
 adb shell uname -r
 # harus: 5.4.302-moto-g92683a4fde22
+
+adb shell getprop ro.axion.version
+# VANILLA: 2.9-NOESIS-20261028-OFFICIAL-VANILLA-fogos
+# GMS/GApps: 2.9-NOESIS-20261028-OFFICIAL-GMS-fogos
 
 adb shell su -c id
 # harus: uid=0(root) context=u:r:ksu:s0
@@ -107,8 +138,15 @@ daftar modul.
 
 ### Kembali ke stock Axion 2.9
 
-Stock `boot.img` Axion 2.9 tersedia di release
+Stock boot Axion 2.9 tersedia di release
 [`stock-axion-2.9-20261028`](https://github.com/temporalsgt/fogos-axion-sukisu-susfs/releases/tag/stock-axion-2.9-20261028).
+
+| ROM | File stock |
+| --- | --- |
+| AxionOS **VANILLA** | `boot.img` |
+| AxionOS **GMS/GApps** | `boot-gms-stock.img` |
+
+VANILLA:
 
 ```bash
 adb reboot bootloader
@@ -116,13 +154,29 @@ fastboot flash boot_a boot.img
 fastboot reboot
 ```
 
+GMS/GApps:
+
+```bash
+adb reboot bootloader
+fastboot flash boot_a boot-gms-stock.img
+fastboot reboot
+```
+
 ### Kembali ke kernel custom sebelumnya
 
-Flash `boot.img` dari release custom yang sebelumnya dipakai dengan perintah
-yang sama:
+Flash image custom yang sesuai dengan varian ROM yang sedang dipakai.
+
+VANILLA:
 
 ```bash
 fastboot flash boot_a boot.img
+fastboot reboot
+```
+
+GMS/GApps:
+
+```bash
+fastboot flash boot_a boot-gms.img
 fastboot reboot
 ```
 
@@ -132,8 +186,11 @@ terhapus oleh flashing partisi `boot`.
 
 ## Batasan dan catatan
 
-- **Hanya untuk build AxionOS 2.9 `20261028`.** Setelah OTA Axion, kernel dan
-  modul vendor bisa berubah; build ulang dengan commit/config/boot image baru.
+- **Hanya untuk build AxionOS 2.9 `20261028`**, varian VANILLA atau GMS/GApps.
+  Setelah OTA Axion, kernel dan modul vendor bisa berubah; build ulang dengan
+  commit/config/boot image baru.
+- `boot.img` hanya untuk VANILLA; `boot-gms.img` hanya untuk GMS/GApps. Jangan
+  silang, karena ramdisk-nya berbeda meskipun kernel-nya sama.
 - OTA akan menimpa `boot`; kernel ini tidak punya survival otomatis.
 - Play Integrity/attestation tidak dijamin. SUSFS bukan solusi PIF, dan
   bootloader tetap unlocked.
@@ -159,7 +216,7 @@ patches/sukisu/                     patch kompatibilitas SukiSU untuk 5.4
 scripts/apply-patches.sh            apply patch + integrasi SukiSU
 scripts/build.sh                    download clang + build Image
 scripts/verify.sh                   cek config, release, vermagic, simbol
-scripts/package.sh                  CRC modul, repack boot.img, zip AK3
+scripts/package.sh                  CRC modul, repack boot.img + boot-gms.img, zip AK3
 scripts/check-module-crcs.sh        pembanding CRC modul vendor
 pins.env                            semua versi/commit/URL di-pin
 ```
