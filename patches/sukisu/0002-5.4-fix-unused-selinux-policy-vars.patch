@@ -1,0 +1,21 @@
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 6f73a740..28ec338f 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -151,7 +151,6 @@ static int apply_kernelsu_rules_fn(void *ptr)
+ 
+ void apply_kernelsu_rules(void)
+ {
+-    struct selinux_policy *pol, *old_pol;
+     struct policydb *db;
+ 
+     if (!getenforce()) {
+@@ -159,6 +158,8 @@ void apply_kernelsu_rules(void)
+     }
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++    struct selinux_policy *pol, *old_pol;
++
+     mutex_lock(&selinux_state.policy_mutex);
+ 
+     old_pol = rcu_dereference_protected(selinux_state.policy, lockdep_is_held(&selinux_state.policy_mutex));

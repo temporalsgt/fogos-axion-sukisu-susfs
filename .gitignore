@@ -1,0 +1,7 @@
+.toolchain/
+kernel/
+work/
+dist/
+out/
+*.tar.gz
+*.zip

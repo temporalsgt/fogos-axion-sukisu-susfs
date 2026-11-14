@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Verify the kernel ABI against the stock vendor modules, repack the Axion
+# boot.img with the new kernel, and build the AnyKernel3 zip.
+set -euo pipefail
+
+REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck disable=SC1091
+source "$REPO_DIR/pins.env"
+
+KERNEL_DIR=${1:?usage: package.sh <kernel-dir>}
+KERNEL_DIR=$(cd "$KERNEL_DIR" && pwd)
+WORK_DIR=${WORK_DIR:-$REPO_DIR/work}
+DIST_DIR=${DIST_DIR:-$REPO_DIR/dist}
+IMAGE="$KERNEL_DIR/out/arch/arm64/boot/Image"
+
+test -s "$IMAGE" || { echo "missing $IMAGE"; exit 1; }
+test -s "$KERNEL_DIR/out/Module.symvers" || { echo "missing Module.symvers"; exit 1; }
+
+BUILT_RELEASE=$(grep -a -o 'Linux version [0-9][^ ]*' "$IMAGE" | head -1 | awk '{print $3}')
+test "$BUILT_RELEASE" = "$EXPECTED_KERNEL_RELEASE" || {
+  echo "built kernel release mismatch: got '$BUILT_RELEASE', expected '$EXPECTED_KERNEL_RELEASE'"
+  exit 1
+}
+
+fetch_pinned() {
+  local url=$1 sha=$2 dest=$3
+  if ! echo "$sha  $dest" | sha256sum -c - >/dev/null 2>&1; then
+    rm -f "$dest"
+    curl -L --fail --retry 3 --retry-delay 5 -o "$dest" "$url"
+    echo "$sha  $dest" | sha256sum -c -
+  fi
+}
+
+case "$DIST_DIR" in
+  ""|"/") echo "refusing to clean DIST_DIR=$DIST_DIR"; exit 1 ;;
+esac
+rm -rf "$DIST_DIR"
+mkdir -p "$WORK_DIR" "$DIST_DIR"
+
+echo "[+] ensuring stock Axion boot image"
+fetch_pinned "$STOCK_BOOT_URL" "$STOCK_BOOT_SHA256" "$WORK_DIR/boot-stock.img"
+
+echo "[+] ensuring stock Axion vendor_boot image"
+fetch_pinned "$STOCK_VENDOR_BOOT_URL" "$STOCK_VENDOR_BOOT_SHA256" "$WORK_DIR/vendor_boot-stock.img"
+
+echo "[+] ensuring mkbootimg"
+if [ ! -d "$WORK_DIR/mkbootimg/.git" ] || \
+   [ "$(git -C "$WORK_DIR/mkbootimg" rev-parse HEAD 2>/dev/null)" != "$MKBOOTIMG_COMMIT" ]; then
+  rm -rf "$WORK_DIR/mkbootimg"
+  git init -q "$WORK_DIR/mkbootimg"
+  git -C "$WORK_DIR/mkbootimg" remote add origin "$MKBOOTIMG_REPO"
+  git -C "$WORK_DIR/mkbootimg" fetch -q --depth 1 origin "$MKBOOTIMG_COMMIT"
+  git -C "$WORK_DIR/mkbootimg" checkout -q "$MKBOOTIMG_COMMIT"
+fi
+test "$(git -C "$WORK_DIR/mkbootimg" rev-parse HEAD)" = "$MKBOOTIMG_COMMIT" || {
+  echo "mkbootimg commit mismatch"; exit 1;
+}
+
+echo "[+] unpacking stock boot image"
+rm -rf "$WORK_DIR/boot-unpacked"
+python3 "$WORK_DIR/mkbootimg/unpack_bootimg.py" \
+  --boot_img "$WORK_DIR/boot-stock.img" \
+  --out "$WORK_DIR/boot-unpacked" \
+  --format mkbootimg > "$WORK_DIR/mkbootimg.cmd"
+
+STOCK_RELEASE=$(grep -a -o 'Linux version [0-9][^ ]*' "$WORK_DIR/boot-unpacked/kernel" | head -1 | awk '{print $3}')
+test "$STOCK_RELEASE" = "$EXPECTED_KERNEL_RELEASE" || {
+  echo "stock kernel release mismatch: got '$STOCK_RELEASE', expected '$EXPECTED_KERNEL_RELEASE'"
+  exit 1
+}
+echo "[+] stock release matches: $STOCK_RELEASE"
+cp "$IMAGE" "$WORK_DIR/boot-unpacked/kernel"
+
+echo "[+] extracting stock vendor modules from vendor_boot"
+rm -rf "$WORK_DIR/vendor_boot-unpacked" "$WORK_DIR/vendor_boot-ramdisk" "$WORK_DIR/vendor-modules"
+python3 "$WORK_DIR/mkbootimg/unpack_bootimg.py" \
+  --boot_img "$WORK_DIR/vendor_boot-stock.img" \
+  --out "$WORK_DIR/vendor_boot-unpacked" >/dev/null
+RAMDISK="$WORK_DIR/vendor_boot-unpacked/vendor_ramdisk"
+RAMDISK_CPIO="$WORK_DIR/vendor_boot-unpacked/vendor_ramdisk.cpio"
+case "$(od -An -tx1 -N4 "$RAMDISK" | tr -d ' \n')" in
+  # gzip, xz, zstd, modern LZ4 frame, legacy LZ4
+  1f8b*) gzip -dc "$RAMDISK" > "$RAMDISK_CPIO" ;;
+  fd377a585a00*) xz -dc "$RAMDISK" > "$RAMDISK_CPIO" ;;
+  28b52ffd*) zstd -dc "$RAMDISK" > "$RAMDISK_CPIO" ;;
+  04224d18|02214c18) lz4 -d -f -q "$RAMDISK" "$RAMDISK_CPIO" ;;
+  *) cp "$RAMDISK" "$RAMDISK_CPIO" ;;
+esac
+mkdir -p "$WORK_DIR/vendor_boot-ramdisk"
+(cd "$WORK_DIR/vendor_boot-ramdisk" && cpio -idm --quiet < "$RAMDISK_CPIO")
+FIRST_KO=$(find "$WORK_DIR/vendor_boot-ramdisk" -name '*.ko' -print -quit)
+test -n "$FIRST_KO" || { echo "no stock vendor modules found in vendor_boot"; exit 1; }
+mkdir -p "$WORK_DIR/vendor-modules"
+find "$WORK_DIR/vendor_boot-ramdisk" -name '*.ko' -exec cp -f {} "$WORK_DIR/vendor-modules/" \;
+
+echo "[+] checking built kernel ABI against stock vendor module CRCs"
+bash "$REPO_DIR/scripts/check-module-crcs.sh" \
+  "$KERNEL_DIR/out/Module.symvers" "$WORK_DIR/vendor-modules"
+
+echo "[+] repacking boot.img"
+cd "$WORK_DIR"
+MKB_CMD=$(cat mkbootimg.cmd)
+eval "python3 \"$WORK_DIR/mkbootimg/mkbootimg.py\" $MKB_CMD --output \"$DIST_DIR/boot.img\""
+
+echo "[+] verifying repacked boot.img"
+rm -rf "$WORK_DIR/boot-verify"
+python3 "$WORK_DIR/mkbootimg/unpack_bootimg.py" \
+  --boot_img "$DIST_DIR/boot.img" --out "$WORK_DIR/boot-verify" >/dev/null
+cmp "$WORK_DIR/boot-verify/kernel" "$IMAGE"
+
+echo "[+] building AnyKernel3 zip"
+if [ ! -d "$WORK_DIR/AnyKernel3/.git" ]; then
+  rm -rf "$WORK_DIR/AnyKernel3"
+  git clone "$AK3_REPO" "$WORK_DIR/AnyKernel3"
+fi
+git -C "$WORK_DIR/AnyKernel3" fetch --depth 1 origin "$AK3_COMMIT" >/dev/null 2>&1 || true
+git -C "$WORK_DIR/AnyKernel3" checkout -q "$AK3_COMMIT"
+cp "$IMAGE" "$WORK_DIR/AnyKernel3/Image"
+cp "$REPO_DIR/ak3/anykernel.sh" "$WORK_DIR/AnyKernel3/anykernel.sh"
+
+DATE=$(date -u +%Y%m%d)
+ZIP_NAME="fogos-axion-sukisu-susfs-$DATE.zip"
+ZIP_PATH="$DIST_DIR/$ZIP_NAME"
+python3 - "$WORK_DIR/AnyKernel3" "$ZIP_PATH" <<'PY'
+import os
+import sys
+import zipfile
+
+src, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for root, _dirs, files in os.walk(src):
+        if ".git" in root.split(os.sep):
+            continue
+        for name in files:
+            path = os.path.join(root, name)
+            z.write(path, os.path.relpath(path, src))
+PY
+
+cp "$IMAGE" "$DIST_DIR/Image"
+cp "$KERNEL_DIR/out/.config" "$DIST_DIR/kernel.config"
+cp "$KERNEL_DIR/out/System.map" "$DIST_DIR/System.map"
+cp "$KERNEL_DIR/out/Module.symvers" "$DIST_DIR/Module.symvers"
+(
+  cd "$DIST_DIR"
+  sha256sum boot.img Image kernel.config System.map Module.symvers "$ZIP_NAME" > SHA256SUMS
+  sha256sum -c SHA256SUMS
+)
+
+echo "[+] artifacts:"
+ls -lh "$DIST_DIR/boot.img" "$ZIP_PATH" "$DIST_DIR/Image" "$DIST_DIR/kernel.config" \
+  "$DIST_DIR/System.map" "$DIST_DIR/Module.symvers"

@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.patch text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.config text eol=lf
+*defconfig text eol=lf
+pins.env text eol=lf

@@ -1,0 +1,93 @@
+name: Build AxionOS fogos kernel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axion-fogos-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential flex libssl-dev libelf-dev \
+            device-tree-compiler python3 zip unzip curl git make gcc g++ \
+            libncurses-dev lz4 cpio xz-utils zstd
+
+      - name: Cache clang
+        uses: actions/cache@v4
+        with:
+          path: .toolchain/clang
+          key: clang-r563880c-android16-qpr2-v1
+
+      - name: Clone kernel at the Axion 2.9 commit
+        run: |
+          set -euo pipefail
+          source pins.env
+          rm -rf kernel
+          git init kernel
+          git -C kernel remote add origin "$KERNEL_REPO"
+          git -C kernel fetch --depth 1 origin "$KERNEL_COMMIT"
+          git -C kernel checkout FETCH_HEAD
+          test "$(git -C kernel rev-parse HEAD)" = "$KERNEL_COMMIT"
+          git -C kernel log -1 --oneline
+
+      - name: Apply SUSFS + SukiSU patches
+        run: |
+          set -euo pipefail
+          source pins.env
+          bash scripts/apply-patches.sh kernel
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          source pins.env
+          bash scripts/build.sh kernel
+
+      - name: Verify
+        run: |
+          set -euo pipefail
+          source pins.env
+          bash scripts/verify.sh kernel
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          source pins.env
+          bash scripts/package.sh kernel
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fogos-axion-sukisu-susfs
+          path: dist/
+          if-no-files-found: error
+          include-hidden-files: true
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-logs
+          path: |
+            kernel/**/*.rej
+            kernel/**/*.orig
+            kernel/out/.config
+            kernel/out/System.map
+            kernel/out/arch/arm64/boot/Image
+            work/mkbootimg.cmd
+          if-no-files-found: ignore
+          include-hidden-files: true
