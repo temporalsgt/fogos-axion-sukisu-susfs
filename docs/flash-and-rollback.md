@@ -61,8 +61,9 @@ fastboot reboot
 
 ### Opsi B — AnyKernel3 (TWRP/OrangeFox)
 
-Gunakan hanya di build 20261028. Zip AK3 mempertahankan ramdisk yang sedang
-terpasang dan mengganti kernelnya.
+Gunakan hanya di build 20261028. Zip AK3 memakai mode kernel-only
+(`split_boot` + `flash_boot`): hanya kernel yang diganti, ramdisk yang sedang
+terpasang dipertahankan bit-for-bit tanpa ekstrak/repack.
 
 1. Salin `fogos-axion-sukisu-susfs-*.zip` ke storage.
 2. Boot ke TWRP/OrangeFox.

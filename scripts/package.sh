@@ -25,6 +25,22 @@ grep -qx 'BLOCK=boot' "$REPO_DIR/ak3/anykernel.sh" || {
   exit 1
 }
 
+# Kernel-only "OG AK" flow: split_boot + flash_boot. Repacking the ramdisk
+# (dump_boot/write_boot) recompresses the cpio and changes directory modes,
+# so reject any flow that unpacks or repacks it.
+grep -qx 'split_boot' "$REPO_DIR/ak3/anykernel.sh" || {
+  echo "ak3/anykernel.sh must use the kernel-only split_boot flow"
+  exit 1
+}
+grep -qx 'flash_boot' "$REPO_DIR/ak3/anykernel.sh" || {
+  echo "ak3/anykernel.sh must use the kernel-only flash_boot flow"
+  exit 1
+}
+if grep -qxE 'dump_boot|write_boot|repack_ramdisk' "$REPO_DIR/ak3/anykernel.sh"; then
+  echo "ak3/anykernel.sh must not unpack/repack the ramdisk (kernel-only flow)"
+  exit 1
+fi
+
 BUILT_RELEASE=$(grep -a -o 'Linux version [0-9][^ ]*' "$IMAGE" | head -1 | awk '{print $3}')
 test "$BUILT_RELEASE" = "$EXPECTED_KERNEL_RELEASE" || {
   echo "built kernel release mismatch: got '$BUILT_RELEASE', expected '$EXPECTED_KERNEL_RELEASE'"
@@ -216,6 +232,11 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     cfg = z.read("anykernel.sh").decode()
 if "\nBLOCK=boot\n" not in "\n" + cfg + "\n":
     sys.exit("packaged anykernel.sh must set BLOCK=boot (init_boot_a is empty on fogos)")
+lines = cfg.splitlines()
+if "split_boot" not in lines or "flash_boot" not in lines:
+    sys.exit("packaged anykernel.sh must use the kernel-only split_boot/flash_boot flow")
+if any(line in ("dump_boot", "write_boot", "repack_ramdisk") for line in lines):
+    sys.exit("packaged anykernel.sh must not unpack/repack the ramdisk")
 PY
 
 cp "$IMAGE" "$DIST_DIR/Image"

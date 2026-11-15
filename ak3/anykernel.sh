@@ -1,7 +1,7 @@
 # AnyKernel3 configuration for fogos AxionOS 2.9 + SukiSU Ultra/SUSFS
 #
-# Only the kernel is replaced. The installed ramdisk is preserved as-is so
-# that the AxionOS fstab/verity/AVB configuration and recovery-as-boot
+# Only the kernel is replaced. The installed ramdisk is preserved bit-for-bit
+# so that the AxionOS fstab/verity/AVB configuration and recovery-as-boot
 # ramdisk of the running build stay intact.
 
 properties() { '
@@ -34,7 +34,18 @@ PATCH_VBMETA_FLAG=auto
 # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
 . tools/ak3-core.sh
 
-# boot install: replace kernel only, leave the ramdisk untouched
-dump_boot
+# Boot install: "OG AK" kernel-only mode. split_boot dumps and splits the
+# installed boot image but does not unpack or repack the ramdisk archive;
+# flash_boot then rebuilds the image with the new kernel and flashes it back.
+# The repack-free path keeps every ramdisk byte (including cpio metadata)
+# identical to the running build -- dump_boot/write_boot would recompress the
+# ramdisk and change the modes of the /data and /sdcard mountpoint dirs.
+split_boot
 
-write_boot
+flash_boot
+
+# write_boot() also calls these; keep the same behavior if partition images
+# are ever added to the zip. They are no-ops for the current payload.
+flash_generic vendor_dlkm
+flash_generic system_dlkm
+flash_generic dtbo

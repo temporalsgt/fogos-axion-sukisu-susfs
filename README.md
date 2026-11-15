@@ -105,9 +105,10 @@ build ini tidak mengubahnya.
 2. Boot ke TWRP/OrangeFox.
 3. Install zip, lalu reboot.
 
-Zip AK3 hanya mengganti kernel di boot yang sedang terpasang; ramdisk,
-dtb, dan konfigurasi verity/AVB Axion tetap dipertahankan. Satu zip ini bisa
-dipakai untuk VANILLA maupun GMS/GApps.
+Zip AK3 memakai mode kernel-only ("OG AK"): boot yang sedang terpasang
+di-split, kernel diganti, lalu di-flash ulang tanpa mengekstrak atau
+merepack ramdisk. Ramdisk, dtb, dan konfigurasi verity/AVB Axion tetap
+bit-for-bit sama. Satu zip ini bisa dipakai untuk VANILLA maupun GMS/GApps.
 
 ## Verifikasi setelah boot
 
@@ -181,7 +182,8 @@ terhapus oleh flashing partisi `boot`.
   silang, karena ramdisk-nya berbeda meskipun kernel-nya sama.
 - Partisi `init_boot_a` di fogos kosong (8 MiB nol) dan ramdisk sebenarnya ada
   di `boot_a`. Zip AK3 memakai `BLOCK=boot` agar tidak salah memilih
-  `init_boot` lalu gagal dengan `Splitting image failed`.
+  `init_boot` lalu gagal dengan `Splitting image failed`. Zip juga memakai
+  flow kernel-only (`split_boot` + `flash_boot`) agar ramdisk tidak di-repack.
 - OTA akan menimpa `boot`; kernel ini tidak punya survival otomatis.
 - Play Integrity/attestation tidak dijamin. SUSFS bukan solusi PIF, dan
   bootloader tetap unlocked.
