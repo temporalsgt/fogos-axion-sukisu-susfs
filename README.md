@@ -179,6 +179,9 @@ terhapus oleh flashing partisi `boot`.
   commit/config/boot image baru.
 - `boot.img` hanya untuk VANILLA; `boot-gms.img` hanya untuk GMS/GApps. Jangan
   silang, karena ramdisk-nya berbeda meskipun kernel-nya sama.
+- Partisi `init_boot_a` di fogos kosong (8 MiB nol) dan ramdisk sebenarnya ada
+  di `boot_a`. Zip AK3 memakai `BLOCK=boot` agar tidak salah memilih
+  `init_boot` lalu gagal dengan `Splitting image failed`.
 - OTA akan menimpa `boot`; kernel ini tidak punya survival otomatis.
 - Play Integrity/attestation tidak dijamin. SUSFS bukan solusi PIF, dan
   bootloader tetap unlocked.

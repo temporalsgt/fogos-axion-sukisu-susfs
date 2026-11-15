@@ -18,6 +18,13 @@ IMAGE="$KERNEL_DIR/out/arch/arm64/boot/Image"
 test -s "$IMAGE" || { echo "missing $IMAGE"; exit 1; }
 test -s "$KERNEL_DIR/out/Module.symvers" || { echo "missing Module.symvers"; exit 1; }
 
+# fogos ships an empty init_boot_a; AK3's BLOCK=auto would select it and
+# magiskboot would abort with "Splitting image failed". Never ship auto.
+grep -qx 'BLOCK=boot' "$REPO_DIR/ak3/anykernel.sh" || {
+  echo "ak3/anykernel.sh must set BLOCK=boot (init_boot_a is empty on fogos)"
+  exit 1
+}
+
 BUILT_RELEASE=$(grep -a -o 'Linux version [0-9][^ ]*' "$IMAGE" | head -1 | awk '{print $3}')
 test "$BUILT_RELEASE" = "$EXPECTED_KERNEL_RELEASE" || {
   echo "built kernel release mismatch: got '$BUILT_RELEASE', expected '$EXPECTED_KERNEL_RELEASE'"
@@ -199,6 +206,16 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for name in files:
             path = os.path.join(root, name)
             z.write(path, os.path.relpath(path, src))
+PY
+
+python3 - "$ZIP_PATH" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as z:
+    cfg = z.read("anykernel.sh").decode()
+if "\nBLOCK=boot\n" not in "\n" + cfg + "\n":
+    sys.exit("packaged anykernel.sh must set BLOCK=boot (init_boot_a is empty on fogos)")
 PY
 
 cp "$IMAGE" "$DIST_DIR/Image"

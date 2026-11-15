@@ -71,6 +71,13 @@ terpasang dan mengganti kernelnya.
 Recovery resmi Axion biasanya menolak zip unsigned; gunakan fastboot atau
 TWRP.
 
+> **Troubleshooting:** kalau instalasi berhenti dengan
+> `Splitting image failed. Aborting...`, zip AK3 tersebut masih memakai
+> `BLOCK=auto`. Di HP ini `init_boot_a` kosong (8 MiB nol), sehingga
+> auto-deteksi memilih partisi itu dan bukan `boot_a`. Pakai zip build
+> **20261115** atau lebih baru (sudah `BLOCK=boot`), atau flash `boot.img`
+> lewat fastboot.
+
 ## Verifikasi setelah boot
 
 ```bash

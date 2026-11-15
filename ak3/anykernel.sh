@@ -22,7 +22,11 @@ supported.vendorpatchlevels=
 '; } # end properties
 
 # boot shell variables
-BLOCK=auto
+# fogos has an unused 8 MiB init_boot_a partition that is entirely zeroed;
+# the real ramdisk lives in boot_a (header v3). AK3's BLOCK=auto checks
+# init_boot before boot, dumps that blank partition, and magiskboot aborts
+# with "Splitting image failed". Target boot explicitly.
+BLOCK=boot
 IS_SLOT_DEVICE=auto
 RAMDISK_COMPRESSION=auto
 PATCH_VBMETA_FLAG=auto
